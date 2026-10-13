@@ -8,41 +8,66 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Unpack project
-        run: |
-          mkdir -p project
-          unzip -q ChatPDFExport_GitHub_Ready.zip -d project
-          find project -maxdepth 3 -type f | head -40
-
-      - name: Set up Java
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Configure Android SDK
+      - name: Unpack Android project
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          test -d "$ANDROID_HOME"
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          mkdir -p project
+          unzip -q ChatPDFExport_GitHub_Ready.zip -d project
+          find project -maxdepth 3 -type f
+
+      - name: Fix Java and Kotlin compatibility
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          files = list(Path("project").rglob("app/build.gradle.kts"))
+          if not files:
+              raise SystemExit("app/build.gradle.kts not found")
+
+          path = files[0]
+          content = path.read_text()
+
+          if "compileOptions" not in content:
+              content = content.replace(
+                  "android {",
+                  """android {
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              """,
+                  1
+              )
+
+          path.write_text(content)
+          print("Updated:", path)
+          PY
 
       - name: Build APK
+        shell: bash
         run: |
-          cd project
-          ROOT=$(find . -name settings.gradle -o -name settings.gradle.kts | head -1)
-          test -n "$ROOT" || exit 1
+          set -e
+          ROOT=$(find project -name settings.gradle.kts -print -quit)
+          test -n "$ROOT"
           cd "$(dirname "$ROOT")"
+
           if [ -f gradlew ]; then
             chmod +x gradlew
-            ./gradlew assembleDebug
+            ./gradlew --no-daemon assembleDebug
           else
-            gradle assembleDebug
+            gradle --no-daemon assembleDebug
           fi
 
       - name: Upload APK
