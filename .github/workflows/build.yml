@@ -1,0 +1,50 @@
+
+name: Build ChatPDF APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Unpack project
+        run: |
+          mkdir -p project
+          unzip -q ChatPDFExport_GitHub_Ready.zip -d project
+          find project -maxdepth 3 -type f | head -40
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK
+        run: |
+          cd project
+          ROOT=$(find . -name settings.gradle -o -name settings.gradle.kts | head -1)
+          test -n "$ROOT" || exit 1
+          cd "$(dirname "$ROOT")"
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ChatPDFExport-APK
+          path: project/**/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
